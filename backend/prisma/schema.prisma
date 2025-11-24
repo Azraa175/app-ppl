@@ -1,0 +1,245 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==================== ENUM ====================
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  READY_FOR_PICKUP
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// ==================== USER ====================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  role      UserRole @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  cart   Cart?
+  orders Order[]
+
+  @@index([email])
+  @@index([role])
+}
+
+// ==================== CATEGORY ====================
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  image       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products Product[]
+}
+
+// ==================== PRODUCT ====================
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  basePrice   Float
+  image       String?
+  categoryId  String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category   Category           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  options    ProductOption[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+// ==================== PRODUCT OPTIONS ====================
+
+model ProductOption {
+  id          String                @id @default(cuid())
+  name        String
+  description String?
+  productId   String
+  isRequired  Boolean               @default(false)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  product Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values  ProductOptionValue[]
+
+  @@index([productId])
+}
+
+model ProductOptionValue {
+  id              String   @id @default(cuid())
+  value           String
+  priceModifier   Float    @default(0)
+  productOptionId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  option ProductOption @relation(fields: [productOptionId], references: [id], onDelete: Cascade)
+
+  cartItemOptions  CartItemOption[]
+  orderItemOptions OrderItemOption[]
+
+  @@index([productOptionId])
+}
+
+// ==================== CART ====================
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  productId String
+  quantity  Int      @default(1)
+  fileUrl   String?
+  notes     String?
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart    Cart              @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options CartItemOption[]
+
+  @@index([cartId])
+  @@index([productId])
+}
+
+model CartItemOption {
+  id                   String   @id @default(cuid())
+  cartItemId           String
+  productOptionValueId String
+  createdAt            DateTime @default(now())
+
+  cartItem           CartItem           @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  productOptionValue ProductOptionValue @relation(fields: [productOptionValueId], references: [id], onDelete: Cascade)
+
+  @@index([cartItemId])
+  @@index([productOptionValueId])
+}
+
+// ==================== ORDER ====================
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  userId      String
+  status      OrderStatus @default(PENDING)
+  totalAmount Float
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user    User        @relation(fields: [userId], references: [id])
+  items   OrderItem[]
+  payment Payment?
+
+  @@index([userId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  fileUrl   String?
+  notes     String?
+  price     Float
+  subtotal  Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  options OrderItemOption[]
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderItemOption {
+  id                   String   @id @default(cuid())
+  orderItemId          String
+  productOptionValueId String
+  createdAt            DateTime @default(now())
+
+  orderItem          OrderItem          @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  productOptionValue ProductOptionValue @relation(fields: [productOptionValueId], references: [id])
+
+  @@index([orderItemId])
+  @@index([productOptionValueId])
+}
+
+// ==================== PAYMENT ====================
+
+model Payment {
+  id            String        @id @default(cuid())
+  orderId       String        @unique
+  amount        Float
+  paymentMethod String        @default("QRIS")
+  status        PaymentStatus @default(PENDING)
+  qrisImageUrl  String?
+  proofImageUrl String?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+}
